@@ -18,11 +18,6 @@ import {
   type PriorWrong,
   type SayAction,
 } from "./present";
-import { MemoryTimeline } from "./components/MemoryTimeline";
-import { ReasoningWorkspace } from "./components/ReasoningWorkspace";
-import { SystemView } from "./components/SystemView";
-import { VoiceSessionPanel } from "./components/VoiceSessionPanel";
-import { YouCanSay } from "./components/YouCanSay";
 
 const STUDENT_KEY = "mathtalk.student";
 
@@ -375,91 +370,96 @@ export default function App() {
     );
   }
 
-  if (!started) {
-    return (
-      <div className="app-shell start-screen">
-        <main className="start-card" id="main">
-          <p className="start-brand">
-            MathTalk<span className="brand-dot">.</span>
-          </p>
-          <h1>Welcome to MathTalk</h1>
-          <p>A voice-first, reasoning-aware mathematics tutor.</p>
-          <p className="muted">
-            MathTalk is fully operable by voice — no mouse or keyboard required. Your browser will ask
-            for microphone permission.
-          </p>
-          <button className="start-btn" onClick={startVoiceSession} autoFocus>
-            Start with microphone
-          </button>
-          {ttsNote && <p className="muted small">{ttsNote}</p>}
-        </main>
-      </div>
-    );
-  }
+  const problem = session?.current_problem;
+  const completed = session?.session_progress.problems_correct ?? 0;
+  const totalProblems = Math.max(progress.total, 1);
+  const progressPercent = Math.min(100, Math.round((progress.current / totalProblems) * 100));
+  const transcriptLabel = lastInterim || session?.reasoning_transcript || "Tap the microphone or explain your next step aloud.";
+  const tutorMessage = lastSpoken || session?.last_spoken || "I'm ready when you are.";
+  const statusText = phase === "speaking" ? "AI Tutor is Speaking" : phase === "thinking" ? "AI Tutor is Thinking" : phase === "paused" ? "Voice Paused" : "AI Tutor is Listening";
+  const primaryAction = shownActions[0] || "Continue";
+  const historyItems = history.filter((item) => item.speaker === "student").slice(-3).reverse();
+
+  const readAloud = (text: string) => void speakText(text);
+  const toggleVoice = () => {
+    if (phase === "listening") {
+      stopVoice();
+      reportVoice("IDLE");
+      return;
+    }
+    if (!started) {
+      startVoiceSession();
+      return;
+    }
+    beginListening();
+    reportVoice("LISTENING");
+  };
 
   return (
-    <div className="app-shell">
+    <div className="tutor-app">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <div className="sr-announcer" aria-live="assertive">
         {lastSpoken || session?.last_spoken || ""}
       </div>
-      <VoiceSessionPanel
-        phase={phase}
-        pill={pill}
-        headline={copy.headline}
-        subtitle={copy.subtitle}
-        transcript={transcript}
-        listening={phase === "listening"}
-        memo={memo}
-        studentId={studentId}
-        sessionNumber={session?.session_number ?? null}
-        micUnavailable={micUnavailable}
-        voicePills={VOICE_PILLS}
-        sessionPills={SESSION_PILLS}
-        activeVoice={phase}
-        activeSession={sessionPhase}
-      />
-      <main id="main" className="workspace">
-        <ReasoningWorkspace
-          session={session}
-          steps={steps}
-          tutorMessage={lastSpoken || session?.last_spoken || ""}
-          progress={progress}
-          support={support}
-        />
-        <YouCanSay items={sayItems} disabled={busy} onAction={handleSayAction} />
-        <MemoryTimeline
-          studentId={studentId}
-          detected={Boolean(session?.misconception?.detected)}
-          misconceptionType={session?.misconception?.misconception_type || ""}
-          problemId={session?.current_problem?.problem_id || ""}
-        />
-        <SystemView
-          session={session}
-          config={config}
-          events={lastEvents}
-          memories={storedMemories}
-          latency={latency}
-          studentId={studentId}
-          busy={busy}
-          paused={Boolean(session?.paused)}
-          actions={shownActions}
-          typed={typed}
-          onTypedChange={setTyped}
-          onTypedSend={() => {
-            if (typed.trim()) {
-              void sendTurn(typed.trim(), "text");
-              setTyped("");
-            }
-          }}
-          onSelect={selectOption}
-          onCommand={(i) => void sendCommand(i)}
-          onReset={() => void resetDemo()}
-          history={history}
-        />
+      <header className="topbar">
+        <div className="brand-lockup" aria-label="MathTalk Practice Tutor">
+          <span className="brand-mark" aria-hidden="true">∿</span>
+          <span className="brand-name">MathTalk</span>
+          <span className="brand-divider" />
+          <span className="brand-copy"><strong>MathTalk</strong><small>Practice Tutor</small></span>
+        </div>
+        <div className="top-actions">
+          <button className={`voice-status ${phase === "listening" ? "is-listening" : ""}`} onClick={toggleVoice} aria-pressed={phase === "listening"}>
+            <span aria-hidden="true">♩</span> {phase === "listening" ? "Voice Active" : "Start Voice"}
+          </button>
+          <button className="icon-button" onClick={() => readAloud(tutorMessage)} aria-label="Replay tutor response">◖))</button>
+          <button className="avatar" aria-label="Student profile">M</button>
+        </div>
+      </header>
+
+      <main id="main" className="page-content">
+        <section className="session-card" aria-label="Voice session progress">
+          <div className="session-topline"><span>◉ &nbsp;Voice Session</span><div className="access-tools"><button aria-label="Decrease text size">A−</button><button aria-label="Increase text size">A+</button><button aria-label="Contrast settings">◐</button></div></div>
+          <h1>Good morning, {studentId === "demo-student-001" ? "Maya" : "there"}</h1>
+          <div className="problem-progress"><strong>▣ &nbsp;Problem {progress.current} of {totalProblems}{problem?.subtopic ? ` • ${problem.subtopic}` : ""}</strong><strong>{progressPercent}% Completed</strong></div>
+          <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}><span style={{ width: `${progressPercent}%` }} /></div>
+        </section>
+
+        <section className="surface problem-card" aria-labelledby="problem-heading">
+          <div className="section-heading"><span className="eyebrow">▣ &nbsp; Current Problem</span><button className="listen-button" onClick={() => readAloud(problem?.prompt || problem?.display || "")}>◖)) &nbsp;Listen</button></div>
+          <div className="equation-box"><span id="problem-heading">{problem?.ask_question || "Choose a practice mode to begin"}</span><strong>{problem?.display || "MathTalk is ready"}</strong></div>
+          <div className="spoken-equivalent"><span aria-hidden="true">◉</span><div><strong>Spoken Equivalent:</strong><p>“{problem?.prompt || "Tell me what you would like to practice."}”</p></div></div>
+        </section>
+
+        <section className="surface voice-deck" aria-label="Voice input">
+          <span className={`voice-badge ${phase}`}>{phase === "thinking" ? "◌" : phase === "speaking" ? "◖))" : "◌"} &nbsp;{statusText}…</span>
+          <button className={`microphone ${phase}`} onClick={toggleVoice} disabled={busy} aria-label={phase === "listening" ? "Stop listening" : "Start listening"}>♩</button>
+          <div className="sound-bars" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+          <p className="voice-prompt">Tap mic or say <strong>“Hey MathTalk”</strong> to speak</p>
+          <div className="student-said"><span aria-hidden="true">♧</span><div><strong>You said:</strong><p>“{transcriptLabel}”</p></div></div>
+          <label className="typed-entry"><span className="visually-hidden">Type your reasoning</span><input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Or type your reasoning" onKeyDown={(e) => { if (e.key === "Enter" && typed.trim()) { void sendTurn(typed.trim(), "text"); setTyped(""); } }} /><button onClick={() => { if (typed.trim()) { void sendTurn(typed.trim(), "text"); setTyped(""); } }} disabled={!typed.trim() || busy}>Send</button></label>
+          {micUnavailable && <p className="notice">Microphone unavailable. You can continue with typed reasoning.</p>}
+        </section>
+
+        <section className="surface tutor-card" aria-labelledby="tutor-heading">
+          <div className="tutor-header"><div className="tutor-title"><span className="tutor-icon" aria-hidden="true">▣</span><div><h2 id="tutor-heading">MathTalk Tutor</h2><span>● Voice Verified Response</span></div></div><button className="replay" onClick={() => readAloud(tutorMessage)}>◴ 0.8x &nbsp; ↻ Repeat</button></div>
+          <div className="tutor-response">{tutorMessage}</div>
+          <ol className="step-list">
+            {steps.map((step) => <li key={step.id} className={`learning-step ${step.status}`}><span className="step-number">{step.status === "verified" ? "✓" : step.index}</span><div><strong>{step.index === 1 ? "Step 1" : step.status === "pending" ? `Step ${step.index}` : "Current Focus"}: {step.title}</strong><p>{step.claims.map((claim) => claim.text).join(" · ") || step.calloutBody || "Tell MathTalk what you would do next."}</p></div>{step.status !== "pending" && <button onClick={() => readAloud(step.claims.map((claim) => claim.text).join(". ") || step.calloutBody)} aria-label={`Listen to ${step.title}`}>◖))</button>}</li>)}
+            {steps.length === 0 && <li className="learning-step pending"><span className="step-number">1</span><div><strong>Your next step</strong><p>Explain how you would solve the equation.</p></div></li>}
+          </ol>
+        </section>
+
+        <section className="action-area" aria-label="Learning actions">
+          <button className="primary-action" disabled={busy} onClick={() => selectOption(primaryAction)}>✓ &nbsp;{primaryAction}</button>
+          <div className="secondary-actions"><button onClick={() => void sendCommand("REQUEST_HINT")} disabled={busy}>♧ &nbsp;Need Hint</button><button onClick={() => void sendCommand("REPEAT")} disabled={busy}>↻ &nbsp;Repeat Question</button></div>
+        </section>
+
+        <section className="surface voice-log" aria-labelledby="log-heading"><div className="log-heading"><h2 id="log-heading">▧ &nbsp; Today’s Voice Log</h2><span>{completed} Solved</span></div>{historyItems.length ? historyItems.map((item, index) => <article key={`${item.text}-${index}`}><strong>{item.text}</strong><small>Voice response {historyItems.length - index} • {session?.verification_result?.verdict === "correct" ? "verified" : "in progress"}</small></article>) : <article><strong>Your spoken work will appear here</strong><small>MathTalk checks each step, not just the answer.</small></article>}</section>
       </main>
+      <nav className="bottom-nav" aria-label="Primary navigation"><button className="active">⌂<span>Practice</span></button><button onClick={() => document.getElementById("log-heading")?.scrollIntoView({ behavior: "smooth" })}>♧<span>History</span></button><button onClick={() => document.querySelector(".session-card")?.scrollIntoView({ behavior: "smooth" })}>⌁<span>Progress</span></button><button onClick={() => void resetDemo()}>☷<span>Reset</span></button></nav>
     </div>
   );
 }
