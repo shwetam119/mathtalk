@@ -1,0 +1,1 @@
+"""MathTalk backend application package."""
