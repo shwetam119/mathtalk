@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@rollup/rollup-darwin-arm64": "^4.62.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
